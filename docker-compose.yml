@@ -50,7 +50,7 @@ services:
       SHELL: /bin/bash
       # Site behaviour — dev defaults. Override via docker-compose.prod.yml
       # (or `-e MUTE_EMAILS=0` on the CLI) when deploying to production.
-      MUTE_EMAILS: "1"            # 1 = drop outgoing mail; 0 = actually send
+      MUTE_EMAILS: "0"            # 1 = drop outgoing mail; 0 = actually send
       DEVELOPER_MODE: "1"         # 1 = auto-reload + debug; 0 for prod
       SERVER_SCRIPT_ENABLED: "1"
       SITE_LANG: zh
