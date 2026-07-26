@@ -1,0 +1,44 @@
+# docker-compose.prod.yml — production overrides
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What this changes vs. the base compose file:
+#   - MUTE_EMAILS=0            → outgoing mail actually leaves the server
+#   - DEVELOPER_MODE=0         → no auto-reload, hides debug pages / stack traces
+#   - Stronger MariaDB password (set via .env or shell env, see below)
+#   - Admin password from env (avoid the "admin" default in prod)
+#   - No port publishing for MariaDB/Redis (they're internal to the compose
+#     network); only the Frappe HTTP + socketio ports are exposed
+#
+# Recommended: create a `.env` file next to this compose file with real
+# secrets, docker compose picks it up automatically:
+#
+#   DB_ROOT_PASSWORD=SomeStrongDBPassword
+#   ADMIN_PASSWORD=SomeStrongAdminPassword
+#   SITE_NAME=crm.your-domain.com
+#
+# Then run:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  mariadb:
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}"
+    # Do not expose port 3306 to the host in production — the DB should
+    # only be reachable through the compose network.
+    ports: []
+
+  redis:
+    # Same idea for Redis.
+    ports: []
+
+  frappe:
+    environment:
+      SITE_NAME: "${SITE_NAME:-crm.localhost}"
+      DB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}"
+      # Production site behaviour
+      MUTE_EMAILS: "0"
+      DEVELOPER_MODE: "0"
+      SERVER_SCRIPT_ENABLED: "0"

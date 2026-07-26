@@ -1,0 +1,22 @@
+# Keep the build context small and reproducible.
+**/.git
+**/.github
+**/node_modules
+**/dist
+**/dev-dist
+**/.venv
+**/__pycache__
+**/*.pyc
+**/coverage
+**/playwright-report
+**/test-results
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+crm/frontend/dev-dist
+crm/frontend/.vite
+crm/crm/public/frontend
+crm/crm/www/crm.html
+docker-compose.yml
+init.sh
+DEPLOY.md

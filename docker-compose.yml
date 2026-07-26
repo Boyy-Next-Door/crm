@@ -1,0 +1,71 @@
+name: crm
+
+services:
+  mariadb:
+    image: mariadb:10.8
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    environment:
+      MYSQL_ROOT_PASSWORD: "123"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mariadb-admin ping -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent || mysqladmin ping -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  frappe:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: frappe-crm:local
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SITE_NAME: crm.localhost
+      DB_HOST: mariadb
+      DB_ROOT_PASSWORD: "123"
+      ADMIN_PASSWORD: admin
+      REDIS_CACHE: redis://redis:6379
+      REDIS_QUEUE: redis://redis:6379
+      REDIS_SOCKETIO: redis://redis:6379
+      SHELL: /bin/bash
+      # Site behaviour — dev defaults. Override via docker-compose.prod.yml
+      # (or `-e MUTE_EMAILS=0` on the CLI) when deploying to production.
+      MUTE_EMAILS: "1"            # 1 = drop outgoing mail; 0 = actually send
+      DEVELOPER_MODE: "1"         # 1 = auto-reload + debug; 0 for prod
+      SERVER_SCRIPT_ENABLED: "1"
+      SITE_LANG: zh
+    working_dir: /home/frappe/frappe-bench
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    volumes:
+      # Persist site data (DB config, files, encryption key) across `down`s.
+      - sites-data:/home/frappe/frappe-bench/sites
+      # Persist logs so `docker compose down` doesn't nuke your history.
+      - logs-data:/home/frappe/frappe-bench/logs
+
+volumes:
+  mariadb-data:
+  redis-data:
+  sites-data:
+  logs-data:
