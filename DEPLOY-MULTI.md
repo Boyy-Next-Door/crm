@@ -8,6 +8,10 @@ http://<公网IP>:8081/crm   →  团队 A      http://<公网IP>/a  会 302 过
 http://<公网IP>:8082/crm   →  团队 B      http://<公网IP>/b  会 302 过去
 ```
 
+`/a` `/b` 跳的是 `/login` 而不是 `/crm`：Frappe 对未登录用户访问 `/crm` 会返回
+一个「没有权限」页（403），而 `/login` 未登录时给登录页、已登录时自己 301 到
+`/crm` —— 两种情况都对。发给客户的就用 `http://<公网IP>/a` 这个短地址。
+
 > **为什么不是 `http://<IP>/a/crm` 这种纯路径？**
 > Frappe 不支持子路径部署 —— 前端 router base 写死 `/crm`，`/api`、`/app`、
 > `/files`、`/assets`、`/socket.io` 全是根路径，session cookie 也固定
@@ -151,8 +155,25 @@ curl -I http://127.0.0.1/a          # 应该是 302 到 :8081/crm
 curl -I http://<公网IP>:8081/crm
 ```
 
-浏览器打开 `http://<公网IP>:8081/crm`，用 `Administrator` + 对应的
-`ADMIN_PASSWORD` 登录。**登录后第一件事是改密码。**
+浏览器打开 `http://<公网IP>/a`，用 `Administrator` + 对应的 `ADMIN_PASSWORD`
+登录。**登录后第一件事是改密码。**
+
+服务器本地的端到端自检（登录 → 取 /crm → 调 API → socket.io 握手）可以这样跑：
+
+```bash
+for team in a b; do
+  port=$([ "$team" = a ] && echo 8081 || echo 8082)
+  pw=$(sudo grep '^ADMIN_PASSWORD=' /youruicheng/crm/.env.$team | cut -d= -f2)
+  jar=$(mktemp)
+  echo "团队 $team:"
+  echo "  登录        $(curl -s -c $jar -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:$port/api/method/login -d "usr=Administrator&pwd=$pw")"
+  echo "  /crm        $(curl -s -b $jar -o /dev/null -w '%{http_code}' http://127.0.0.1:$port/crm)"
+  echo "  socket.io   $(curl -s -b $jar -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/socket.io/?EIO=4&transport=polling")"
+  rm -f $jar
+done
+```
+
+三行都应该是 200。
 
 再打开 F12 → Network → WS，确认 socket.io 连上了（状态 101 Switching
 Protocols）。连不上说明 nginx 的 `/socket.io/` 段没生效。
@@ -244,6 +265,29 @@ crma exec frappe bench --site crm-a.youruicheng.cn backup --with-files
 
 建议挂个 cron 每天跑一次，再 rsync 到别的机器。现在服务器盘只剩 25G，备份别
 堆在本地。
+
+---
+
+## 回滚
+
+切换时旧栈（compose 项目名 `crm`，站点 `crm.youruicheng.cn`）只是 **stop 掉了，
+没有删**，数据卷 `crm_*` 原样保留。要退回去：
+
+```bash
+sudo rm -f /etc/nginx/sites-enabled/crm-multi
+sudo ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/crm   # 若还在
+sudo nginx -t && sudo systemctl reload nginx
+sudo docker start crm-mariadb-1 crm-redis-1 crm-frappe-1
+```
+
+切换前的数据快照在 `/youruicheng/backup/pre-migration-*.tgz`。
+
+确认新环境稳定、不需要回滚之后，可以清理旧栈释放空间（约 300M + 卷）：
+
+```bash
+sudo docker rm crm-frappe-1 crm-redis-1 crm-mariadb-1
+sudo docker volume rm crm_mariadb-data crm_sites-data crm_redis-data crm_logs-data
+```
 
 ---
 
