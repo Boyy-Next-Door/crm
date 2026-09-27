@@ -45,6 +45,9 @@ services:
     # Bind only to localhost — Nginx on the host reverse-proxies from
     # public 443 to 127.0.0.1:8000, so exposing 0.0.0.0:8000 to the
     # internet would let people bypass Nginx (and HTTPS) entirely.
+    # Host ports are parameterised so several independent stacks can run side
+    # by side on one machine (see DEPLOY-MULTI.md). Each stack gets its own
+    # compose project name, its own .env, and its own pair of ports.
     ports:
-      - "127.0.0.1:8000:8000"
-      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+      - "127.0.0.1:${SOCKETIO_PORT:-9000}:9000"
