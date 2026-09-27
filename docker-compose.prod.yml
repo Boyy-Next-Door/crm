@@ -42,3 +42,9 @@ services:
       MUTE_EMAILS: "0"
       DEVELOPER_MODE: "0"
       SERVER_SCRIPT_ENABLED: "0"
+    # Bind only to localhost — Nginx on the host reverse-proxies from
+    # public 443 to 127.0.0.1:8000, so exposing 0.0.0.0:8000 to the
+    # internet would let people bypass Nginx (and HTTPS) entirely.
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:9000:9000"
