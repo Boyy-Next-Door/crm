@@ -118,6 +118,11 @@ def accept_invitation(key: str | None = None):
 	# credential that hands out sessions forever.
 	if user_has_password(invitation.email):
 		frappe.db.set_value("CRM Invitation", invitation.name, "key", None)
+		# Frappe only auto-commits write methods; this is a GET, so without an
+		# explicit commit the key survives the request and the link keeps
+		# working. (The branch below gets away with it only because login_as
+		# commits a session as a side effect.)
+		frappe.db.commit()
 		return _redirect("/login")
 
 	frappe.local.login_manager.login_as(invitation.email)
