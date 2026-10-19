@@ -75,22 +75,53 @@ def check_app_permission():
 	return False
 
 
+def _redirect(location: str):
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = location
+
+
 @frappe.whitelist(allow_guest=True)
 def accept_invitation(key: str | None = None):
+	"""Land an invitee in the CRM, or on the login page -- never on a traceback.
+
+	This is reached by clicking a link in an email, so the caller is a person,
+	not code. `frappe.throw` here renders a raw 417 stack trace that tells them
+	nothing actionable, and the observed response is to click the link again and
+	again. Every failure mode -- key already used, expired, or never valid --
+	has the same correct next step: the login page.
+	"""
+	from crm.fcrm.doctype.crm_invitation.crm_invitation import user_has_password
+
 	if not key:
-		frappe.throw(_("Invalid or expired key"))
+		return _redirect("/login")
 
 	result = frappe.db.get_all("CRM Invitation", filters={"key": key}, pluck="name")
 	if not result:
-		frappe.throw(_("Invalid or expired key"))
-	invitation = frappe.get_doc("CRM Invitation", result[0])
-	invitation.accept()
-	invitation.reload()
+		return _redirect("/login")
 
-	if invitation.status == "Accepted":
-		frappe.local.login_manager.login_as(invitation.email)
-		frappe.local.response["type"] = "redirect"
-		frappe.local.response["location"] = "/crm"
+	invitation = frappe.get_doc("CRM Invitation", result[0])
+
+	# A second click on an already-accepted invitation is expected, not an
+	# error: the key deliberately outlives acceptance until the user has set a
+	# password (see CRMInvitation.accept). accept() throws on anything but
+	# Pending, so skip it and just restore their session.
+	if invitation.status == "Pending":
+		invitation.accept()
+		invitation.reload()
+
+	if invitation.status != "Accepted":
+		return _redirect("/login")
+
+	# Once a password exists the link has outlived its purpose, whoever set it
+	# (this flow, an admin, or forgot-password). Retire it here too, not just in
+	# set_own_password -- otherwise an old invitation email stays a standing
+	# credential that hands out sessions forever.
+	if user_has_password(invitation.email):
+		frappe.db.set_value("CRM Invitation", invitation.name, "key", None)
+		return _redirect("/login")
+
+	frappe.local.login_manager.login_as(invitation.email)
+	return _redirect("/crm")
 
 
 @frappe.whitelist()

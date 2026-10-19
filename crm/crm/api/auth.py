@@ -28,6 +28,15 @@ def set_own_password(new_password: str):
 	if frappe.db.get_value("User", user, "require_password_reset"):
 		frappe.db.set_value("User", user, "require_password_reset", 0)
 
+	# CRMInvitation.accept deliberately leaves the invitation key alive so a
+	# user who closed the tab before getting here can click the emailed link
+	# again. A password now exists, so the link has done its job -- burn it
+	# rather than leave a standing credential sitting in someone's inbox.
+	for name in frappe.get_all(
+		"CRM Invitation", filters={"email": user, "key": ["is", "set"]}, pluck="name"
+	):
+		frappe.db.set_value("CRM Invitation", name, "key", None)
+
 	return {"ok": True}
 
 

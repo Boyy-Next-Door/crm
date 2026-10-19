@@ -97,7 +97,16 @@ class CRMInvitation(Document):
 
 		self.status = "Accepted"
 		self.accepted_at = frappe.utils.now()
-		self.key = None
+		# Burn the key only once the account can actually be logged into again.
+		#
+		# We just logged this user in and the frontend will put a non-dismissable
+		# password-set modal in front of them -- but nothing stops them closing
+		# the tab first. Clearing the key here would leave such a user with no
+		# password AND a dead link: locked out until an admin resets them by hand.
+		# Keeping it lets a re-click drop them back in front of the modal.
+		# crm.api.auth.set_own_password clears it the moment a password exists.
+		if user_has_password(self.email):
+			self.key = None
 		self.save(ignore_permissions=True)
 
 	def update_module_in_user(self, user, module):
@@ -145,4 +154,25 @@ def expire_invitations():
 	for invitation in invitations_to_expire:
 		invitation = frappe.get_doc("CRM Invitation", invitation.name)
 		invitation.status = "Expired"
+		# accept() may have left the key alive pending a password that never got
+		# set. Expiry is the end of the line for it.
+		invitation.key = None
 		invitation.save(ignore_permissions=True)
+
+
+def user_has_password(email: str) -> bool:
+	"""True if this user can log in with a password.
+
+	Invited users are created without one -- they are logged in directly by the
+	invitation link and set a password afterwards. Read `__Auth` rather than the
+	User doc: the hash does not live on the document.
+	"""
+	return bool(
+		frappe.db.sql(
+			"""select 1 from `__Auth`
+			where doctype = 'User' and name = %s and fieldname = 'password'
+				and `password` is not null and `password` != ''
+			limit 1""",
+			(email,),
+		)
+	)
