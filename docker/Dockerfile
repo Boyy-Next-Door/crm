@@ -44,6 +44,20 @@ RUN set -ex \
  && cp -r sites /home/frappe/sites-seed \
  && rm -rf /home/frappe/crm-src /home/frappe/.cache /home/frappe/.npm /tmp/*
 
+# The MariaDB client that ships in frappe/bench:latest is now 11.8, and from
+# 11.4 the client requires TLS by default. Our server is mariadb:10.8 with no
+# certificates configured, so every CLI connection fails with
+#   ERROR 2026 (HY000): TLS/SSL error: SSL is required, but the server does
+#   not support it
+# That breaks `bench new-site` and, more importantly, `bench restore` -- both
+# shell out to the `mariadb` / `mariadb-dump` binaries. The app itself is
+# unaffected: MySQLdb (the Python driver) never asked for TLS.
+#
+# Opting the client out is safe here because MariaDB is only reachable on the
+# private compose network and was never speaking TLS in the first place. The
+# alternative -- issuing certs for a container-internal hop -- buys nothing.
+RUN printf '[client]\nssl=0\n' > /home/frappe/.my.cnf
+
 WORKDIR /home/frappe/frappe-bench
 
 COPY --chown=frappe:frappe docker/entrypoint.sh /home/frappe/entrypoint.sh
